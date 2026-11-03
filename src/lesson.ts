@@ -114,5 +114,36 @@ export const LESSON = {
       "title": "Agent generation",
       "url": "https://mastra.ai/reference/agents/generate"
     }
+  ],
+  "readmeWorkflow": [
+    {
+      "step": "Validate request envelope",
+      "component": "src/lab.ts",
+      "behavior": "Accept a topic, bounded source text and an unknown candidate object."
+    },
+    {
+      "step": "Validate candidate",
+      "component": "src/mastra/schema.ts",
+      "behavior": "Run the strict studyCard Zod schema with exactly three key points."
+    },
+    {
+      "step": "Expose findings",
+      "component": "src/lab.ts",
+      "behavior": "Return the validated value or field-level issues; never invent a replacement success object."
+    },
+    {
+      "step": "Review meaning",
+      "component": "src/lab.ts",
+      "behavior": "Keep factualAccuracyVerified=false because schema shape is not factual grounding."
+    }
+  ],
+  "liveWorkflow": [
+    "Call the actual agent.generate() with structuredOutput.schema=studyCard.",
+    "Read response.object, validate it with the same schema and render the resulting JSON with syntax colors."
+  ],
+  "outcomeNotes": [
+    "An invalid summary type, missing prerequisite list or wrong key-point count produces Needs attention.",
+    "A valid schema does not prove that the generated claims follow the source.",
+    "A provider/schema failure is not silently converted into success."
   ]
 } satisfies LessonMetadata;
