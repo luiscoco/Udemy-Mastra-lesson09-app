@@ -1,0 +1,51 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Validate a study-card candidate locally, then use Mastra structuredOutput to generate and consume the same typed contract with a model."><title>Mastra · Lesson 09 · Code walkthrough</title><link rel="icon" href="/astronaut.png"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/lesson.css"><link rel="stylesheet" href="/lab.css"><link rel="stylesheet" href="/code-highlighting.css"></head><body><a class="skip-link" href="#content">Skip to lesson content</a><main><div class="brand"><a href="/">How <span>Mastra</span> Works</a><span class="badge">LESSON 09 / STRUCTURED OUTPUT</span></div><header class="hero"><div><div class="eyebrow">SCHEMA · VALIDATE · CONSUME</div><h1>Explain the <em>actual source.</em></h1><p class="lead">Structured Output Validation and Typed Results</p></div><img src="/astronaut.png" width="190" height="190" alt="Course astronaut mascot"></header><nav class="nav" aria-label="Application sections"><a href="/">Application lab</a><a href="/learn.html">What you will learn</a><a href="/run.html">How to run</a><a href="/architecture.html">Architecture & workflow</a><a href="/walkthrough.html" aria-current="page">Code walkthrough</a><button type="button" id="theme">Dark mode</button></nav><div id="content" tabindex="-1"><section class="note">Local mode validates the submitted object and makes no model call. Live mode uses real Mastra structured output. Both paths distinguish structural validity from factual support. The links and excerpts are generated from this repository; no pseudocode is presented as a running SDK integration.</section><section class="step"><h2>src/lab.ts</h2><p>This excerpt is generated from the actual implementation. The complete file and its line range are linked below.</p><div class="code-toolbar"><p class="source"><a href="https://github.com/luiscoco/Udemy-Mastra-lesson09-app/blob/main/src/lab.ts#L1-L24">src/lab.ts · lines 1–24</a></p><button type="button" data-copy="code-6">Copy code</button></div><pre><code id="code-6" class="language-typescript">import { z } from &quot;zod&quot;;
+import { mastra } from &quot;./mastra/index.js&quot;;
+import { createTutor } from &quot;./mastra/agents.js&quot;;
+import { studyCard } from &quot;./mastra/schema.js&quot;;
+import { assertActive, modelId, type AgentModel, type Emit, type LabResult } from &quot;./core.js&quot;;
+export const inputSchema = z.object({ topic: z.string().trim().min(3).max(120), sourceText: z.string().trim().min(30).max(7000), candidate: z.unknown() }).strict();
+export async function executeLab(raw: unknown, emit: Emit, signal: AbortSignal): Promise&lt;LabResult&gt; {
+  const input = inputSchema.parse(raw); assertActive(signal); const checked = studyCard.safeParse(input.candidate);
+  emit({ type: &quot;stage&quot;, text: &quot;Ran the actual study-card Zod schema against the supplied candidate.&quot; });
+  return { status: checked.success ? &quot;pass&quot; : &quot;needs-attention&quot;, summary: checked.success ? &quot;The candidate satisfies the schema. Compare its statements with the source before accepting its meaning.&quot; : &quot;The candidate failed schema validation. No replacement success object was invented.&quot;,
+    data: { validShape: checked.success, value: checked.success ? checked.data : null, issues: checked.success ? [] : checked.error.issues.map(issue =&gt; ({ path: issue.path.join(&quot;.&quot;), message: issue.message })), factualAccuracyVerified: false } };
+}
+export const liveModel = (_?: unknown) =&gt; modelId();
+export async function executeLive(raw: unknown, question: string, emit: Emit, signal: AbortSignal, model?: AgentModel) {
+  const input = inputSchema.parse(raw); assertActive(signal);
+  const agent = model ? createTutor(model) : mastra.getAgent(&quot;tutor&quot;);
+  emit({ type: &quot;stage&quot;, text: &quot;Calling generate() with the real structuredOutput.schema option.&quot; });
+  const response = await agent.generate(`${question}\nTopic: ${input.topic}\nSource data: ${JSON.stringify(input.sourceText)}`, { maxSteps: 3, abortSignal: signal, modelSettings: { maxOutputTokens: 1400 }, structuredOutput: { schema: studyCard } });
+  assertActive(signal); if (response.error) throw response.error;
+  const checked = studyCard.safeParse(response.object);
+  emit({ type: &quot;answer&quot;, text: checked.success ? `## Generated study card\n\n\`\`\`json\n${JSON.stringify(checked.data, null, 2)}\n\`\`\`\n\nShape validated; compare every claim with the source.` : &quot;## Validation failed\n\nNo valid study card was returned.&quot; });
+  return { finished: response.finishReason === &quot;stop&quot; &amp;&amp; checked.success, steps: response.steps.length, details: { schemaValid: checked.success, factualAccuracyVerified: false, finishReason: response.finishReason } };
+}
+export async function dispose() {}</code></pre></section><section class="step"><h2>src/mastra/schema.ts</h2><p>This excerpt is generated from the actual implementation. The complete file and its line range are linked below.</p><div class="code-toolbar"><p class="source"><a href="https://github.com/luiscoco/Udemy-Mastra-lesson09-app/blob/main/src/mastra/schema.ts#L1-L8">src/mastra/schema.ts · lines 1–8</a></p><button type="button" data-copy="code-7">Copy code</button></div><pre><code id="code-7" class="language-typescript">import { z } from &quot;zod&quot;;
+export const studyCard = z.object({
+  topic: z.string().trim().min(3).max(120),
+  summary: z.string().trim().min(20).max(600),
+  prerequisites: z.array(z.string().trim().min(1).max(120)).max(5),
+  keyPoints: z.array(z.string().trim().min(5).max(240)).length(3),
+}).strict();
+export type StudyCard = z.infer&lt;typeof studyCard&gt;;</code></pre></section><section class="step"><h2>src/mastra/agents.ts</h2><p>This excerpt is generated from the actual implementation. The complete file and its line range are linked below.</p><div class="code-toolbar"><p class="source"><a href="https://github.com/luiscoco/Udemy-Mastra-lesson09-app/blob/main/src/mastra/agents.ts#L1-L4">src/mastra/agents.ts · lines 1–4</a></p><button type="button" data-copy="code-8">Copy code</button></div><pre><code id="code-8" class="language-typescript">import { makeAgent, type AgentModel } from &quot;../core.js&quot;;
+export const instructions = &quot;Create a study card grounded only in the supplied source. Supply the required topic, summary, prerequisites and exactly three key points. Do not fabricate supporting facts.&quot;;
+export function createTutor(model?: AgentModel) { return makeAgent(&quot;lesson-9-tutor&quot;, &quot;Lesson 9 tutor&quot;, instructions, model); }
+export const tutor = createTutor();</code></pre></section><section class="step"><h2>src/mastra/index.ts</h2><p>This excerpt is generated from the actual implementation. The complete file and its line range are linked below.</p><div class="code-toolbar"><p class="source"><a href="https://github.com/luiscoco/Udemy-Mastra-lesson09-app/blob/main/src/mastra/index.ts#L1-L3">src/mastra/index.ts · lines 1–3</a></p><button type="button" data-copy="code-9">Copy code</button></div><pre><code id="code-9" class="language-typescript">import { Mastra } from &quot;@mastra/core/mastra&quot;;
+import { tutor } from &quot;./agents.js&quot;;
+export const mastra = new Mastra({ agents: { tutor: tutor } });</code></pre></section><section class="step"><h2>Shared generation boundary</h2><p>The common helper calls the real Agent API with explicit limits. Lesson-specific code selects the registered agent, inputs and additional validation.</p><div class="code-toolbar"><p class="source"><a href="https://github.com/luiscoco/Udemy-Mastra-lesson09-app/blob/main/src/core.ts#L39-L54">src/core.ts · lines 39–54</a></p><button type="button" data-copy="code-10">Copy code</button></div><pre><code id="code-10" class="language-typescript">export async function generateAnswer(agent: Agent, question: string, emit: Emit, signal: AbortSignal,
+  options: { maxOutputTokens?: number; temperature?: number } = {}) {
+  assertActive(signal);
+  emit({ type: &quot;stage&quot;, text: &quot;Calling the registered agent with generate(); the provider performs the model work.&quot; });
+  const response = await agent.generate(question, { maxSteps: MAX_STEPS, abortSignal: signal,
+    modelSettings: { maxOutputTokens: options.maxOutputTokens || 1200, ...(options.temperature === undefined ? {} : { temperature: options.temperature }) } });
+  assertActive(signal);
+  if (response.error) throw response.error;
+  if (response.text) emit({ type: &quot;answer&quot;, text: response.text });
+  return { finished: response.finishReason === &quot;stop&quot; &amp;&amp; response.text.trim().length &gt; 0,
+    text: response.text, steps: response.steps.length, finishReason: response.finishReason,
+    toolCalls: response.toolCalls.length, details: { finishReason: response.finishReason, toolCalls: response.toolCalls.length } };
+}
+export function resultMarkdown(result: LabResult) {
+  return `## ${result.status === &quot;pass&quot; ? &quot;Practical result&quot; : &quot;Review the result&quot;}\n\n${result.summary}\n\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
+}</code></pre></section><section class="step"><h2>Make one focused change</h2><p>Create a shape-valid but inaccurate candidate and observe that validation alone does not detect the false claim. Then restore accuracy by comparing the supplied source.</p></section></div><footer>MASTRA AI AGENTS · LESSON 09 · STRUCTURED OUTPUT VALIDATION AND TYPED RESULTS<br>Independent TypeScript application · provider credentials stay on the server<br><a href="https://github.com/luiscoco/Udemy-Mastra-lesson09-app">Source on GitHub</a> · <a href="https://mastra.ai/docs">Official Mastra documentation</a></footer></main><script src="/navigation.js"></script><script src="/prism.js"></script><script src="/code-highlighting.js"></script></body></html>
